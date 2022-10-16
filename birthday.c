@@ -79,6 +79,13 @@ int compar_states(const void *a, const void *b) {
 
 int main(int argc, char *argv[]) {
   uint8_t target = 3;
+  if(argc > 1) {
+    int rv = sscanf(argv[1], "%hhu\n", &target);
+    if(rv == 0) {
+      fprintf(stderr, "couldn't parse: %s\n", argv[1]);
+      return 1;
+    }
+  }
   
   // Starting state has 365 birthdays shared by 0 people (because the room is
   // empty) with probability 1.
@@ -101,7 +108,10 @@ int main(int argc, char *argv[]) {
   mpq_t cake_last;
   mpq_init(cake_last);
 
-  for(int i = 0; i < 400; i++) {
+  mpq_t ev;
+  mpq_init(ev);
+
+  for(int i = 0; i < 365 * (target - 1) + 1; i++) {
     innerstate_t *newstates = malloc(len * (target - 1) * sizeof(innerstate_t));
     innerstate_t *out = newstates;
     for(size_t j = 0; j < len; j++) {
@@ -117,8 +127,8 @@ int main(int argc, char *argv[]) {
     // Sort the list of states and remove duplicates.  This avoids exponential
     // growth in the list.  Possibly an explicit sparse matrix representation
     // would be preferable for the N=2 case
-    qsort(states, len, sizeof(innerstate_t), compar_states);
-    {
+    if(len > 0) {
+      qsort(states, len, sizeof(innerstate_t), compar_states);
 #ifdef DEBUG
       printf("before compacting:\n");
       for(size_t j = 0; j < len; j++) {
@@ -166,9 +176,25 @@ int main(int argc, char *argv[]) {
     mpq_init(delta);
     mpq_sub(delta, cake, cake_last);
     double p_cake_delta = mpq_get_d(delta);
+
+    mpq_t evi;
+    mpq_init(evi);
+    mpq_set_ui(evi, i + 1, 1);
+    mpq_mul(evi, evi, delta);
+    mpq_add(ev, ev, evi);
+    mpq_clear(evi);
+
     mpq_clear(delta);
-    printf("With %d people in the room, P(cake) = %.8lf, P(just hit cake)=%.8lf\n", i + 1, p_cake, p_cake_delta);
+
+    printf("With %d people in the room, P(cake) = %.15lf, P(just hit cake)=%.15le, considering %zd nodes\n", i + 1, p_cake, p_cake_delta, len);
     mpq_set(cake_last, cake);
+
+  }
+
+  if(mpq_cmp_ui(cake, 1, 1) == 0) {
+    printf("P(cake) is exactly 1\n");
+  } else {
+    printf("WARNING: P(cake) with 365(N-1)+1 people is not 1!\n");
   }
 
   for(size_t i = 0; i < len; i++) {
@@ -177,6 +203,12 @@ int main(int argc, char *argv[]) {
   free(states);
   mpq_clear(cake);
   mpq_clear(cake_last);
+
+  double ev_d = mpq_get_d(ev);
+  printf("E(people when cake hit) = %.15lf\n", ev_d);
+  mpq_out_str(stdout, 10, ev);
+  printf("\n");
+  mpq_clear(ev);
   
   return 0;
 }
